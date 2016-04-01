@@ -277,7 +277,11 @@ class Process(object):
             builder.tmpdir = kwargs.get("docker_tmpdir") or "/tmp"
         else:
             builder.outdir = kwargs.get("outdir") or tempfile.mkdtemp()
-            builder.tmpdir = kwargs.get("tmpdir") or tempfile.mkdtemp()
+            if kwargs.get('tmpdir_prefix'):
+                builder.tmpdir = kwargs.get("tmpdir") or tempfile.mkdtemp(prefix=kwargs.get('tmpdir_prefix'))
+            else:
+                builder.tmpdir = kwargs.get("tmpdir") or tempfile.mkdtemp()
+
 
         builder.fs_access = kwargs.get("fs_access") or StdFsAccess(input_basedir)
 
