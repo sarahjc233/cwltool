@@ -12,5 +12,5 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
     esac
 fi
 pip install 'setuptools>=18.5';
-pip install 'setuptools>=18.5';
+pip install nose;
 pip install .;

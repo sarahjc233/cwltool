@@ -2,14 +2,17 @@ language: python
 matrix:
     include:
         - os: osx
-          language: generic
+          python: 2.7
+          sudo: required
           env: TOXENV=py27
         - os: linux
           sudo: required
           python: 2.7
           env: TOXENV=py27
 install:
-  - bash .travis/install.sh
+  - pip install 'setuptools>=18.5';
+  - pip install nose;
+  - pip install .;
 # command to run tests
 
 script: nosetests
