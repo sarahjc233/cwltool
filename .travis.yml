@@ -8,7 +8,7 @@ python:
   - "pypy"
 # command to install dependencies
 install:
-  - pip install setuptools>=18.5
+  - pip install 'setuptools>=18.5'
   - pip install .
 # command to run tests
 script: nosetests
