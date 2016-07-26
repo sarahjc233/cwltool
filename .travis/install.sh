@@ -6,7 +6,8 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
         py27)
             brew upgrade;
             brew install pyenv-virtualenv;
-            source bin/activate;
+            virtualenv py27;
+            source py27/bin/activate;
             ;;
     esac
 fi
