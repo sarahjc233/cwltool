@@ -4,12 +4,10 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
 
     case "${TOXENV}" in
         py27)
-            brew upgrade;
-            brew install pyenv-virtualenv;
-            eval "$(pyenv init -)";
-            eval "$(pyenv virtualenv-init -)";
-            pyenv virtualenv 2.7.10 py27;
-            pyenv activate 2.7.10 py27;
+            brew install python;
+            sudo pip install virtualenv;
+            virtualenv py27;
+            source py27/bin/activate;
             ;;
     esac
 else
