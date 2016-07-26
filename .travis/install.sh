@@ -10,6 +10,4 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
             source py27/bin/activate;
             ;;
     esac
-else
-  pip install 'setuptools>=18.5';
 fi
