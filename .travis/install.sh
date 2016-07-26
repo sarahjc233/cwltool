@@ -6,8 +6,12 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
         py27)
             brew upgrade;
             brew install pyenv-virtualenv;
-            virtualenv py27;
-            source py27/bin/activate;
+            eval "$(pyenv init -)";
+            eval "$(pyenv virtualenv-init -)";
+            pyenv virtualenv 2.7.10 py27;
+            pyenv activate py27/bin/activate;
             ;;
     esac
+else
+  pip install 'setuptools>=18.5';
 fi
