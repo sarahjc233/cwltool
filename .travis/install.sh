@@ -9,7 +9,7 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
             eval "$(pyenv init -)";
             eval "$(pyenv virtualenv-init -)";
             pyenv virtualenv 2.7.10 py27;
-            pyenv activate py27;
+            pyenv activate 2.7.10 py27;
             ;;
     esac
 else
