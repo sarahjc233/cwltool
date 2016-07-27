@@ -42,7 +42,7 @@ def arg_parser():  # type: () -> argparse.ArgumentParser
     parser = argparse.ArgumentParser(description='Reference executor for Common Workflow Language')
     parser.add_argument("--conformance-test", action="store_true")
     parser.add_argument("--basedir", type=str)
-    parser.add_argument("--outdir", type=str, default=os.path.abspath('.'),
+    parser.add_argument("--outdir", type=str, default=os.path.realpath('.'),
                         help="Output directory, default current directory")
 
     parser.add_argument("--no-container", action="store_false", default=True,
@@ -190,7 +190,7 @@ def single_job_executor(t, job_order_object, **kwargs):
 
     output_dirs = set()
     finaloutdir = kwargs.get("outdir")
-    kwargs["outdir"] = tempfile.mkdtemp()
+    kwargs["outdir"] = tempfile.mkdtemp(prefix=kwargs["tmp_outdir_prefix"])
     output_dirs.add(kwargs["outdir"])
 
     jobReqs = None
@@ -245,7 +245,7 @@ class FileAction(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None):
         # type: (argparse.ArgumentParser, argparse.Namespace, str, Any) -> None
-        setattr(namespace, self.dest, {"class": "File", "location": "file://%s" % os.path.abspath(values)})
+        setattr(namespace, self.dest, {"class": "File", "location": "file://%s" % os.path.realpath(values)})
 
 
 class DirectoryAction(argparse.Action):
@@ -258,7 +258,7 @@ class DirectoryAction(argparse.Action):
 
     def __call__(self, parser, namespace, values, option_string=None):
         # type: (argparse.ArgumentParser, argparse.Namespace, str, Any) -> None
-        setattr(namespace, self.dest, {"class": "Directory", "location": "file://%s" % os.path.abspath(values)})
+        setattr(namespace, self.dest, {"class": "Directory", "location": "file://%s" % os.path.realpath(values)})
 
 
 class FileAppendAction(argparse.Action):
@@ -275,7 +275,7 @@ class FileAppendAction(argparse.Action):
         if not g:
             g = []
             setattr(namespace, self.dest, g)
-        g.append({"class": "File", "location": "file://%s" % os.path.abspath(values)})
+        g.append({"class": "File", "location": "file://%s" % os.path.realpath(values)})
 
 
 def generate_parser(toolparser, tool, namemap):
@@ -376,7 +376,7 @@ def load_job_order(args, t, stdin, print_input_deps=False, relative_deps=False, 
     if job_order_object:
         input_basedir = args.basedir if args.basedir else os.getcwd()
     elif job_order_file:
-        input_basedir = args.basedir if args.basedir else os.path.abspath(os.path.dirname(job_order_file))
+        input_basedir = args.basedir if args.basedir else os.path.realpath(os.path.dirname(job_order_file))
         try:
             job_order_object, _ = loader.resolve_ref(job_order_file, checklinks=False)
         except Exception as e:
@@ -395,7 +395,7 @@ def load_job_order(args, t, stdin, print_input_deps=False, relative_deps=False, 
 
             if cmd_line["job_order"]:
                 try:
-                    input_basedir = args.basedir if args.basedir else os.path.abspath(os.path.dirname(cmd_line["job_order"]))
+                    input_basedir = args.basedir if args.basedir else os.path.realpath(os.path.dirname(cmd_line["job_order"]))
                     job_order_object = loader.resolve_ref(cmd_line["job_order"])
                 except Exception as e:
                     _logger.error(str(e), exc_info=(e if args.debug else False))
@@ -605,7 +605,9 @@ def main(argsl=None,
                     'workflow': None,
                     'job_order': None,
                     'pack': False,
-                    'on_error': 'continue'}.iteritems():
+                    'on_error': 'continue',
+                    'leave_tmpdir': False,
+                    'leave_outputs': False}.iteritems():
             if not hasattr(args, k):
                 setattr(args, k, v)
 
@@ -677,15 +679,15 @@ def main(argsl=None,
         if args.tmp_outdir_prefix != 'tmp':
             # Use user defined temp directory (if it exists)
             setattr(args, 'tmp_outdir_prefix',
-                    os.path.abspath(args.tmp_outdir_prefix))
-            if not os.path.exists(args.tmp_outdir_prefix):
+                    os.path.realpath(args.tmp_outdir_prefix))
+            if not os.path.exists(os.path.split(args.tmp_outdir_prefix)[0]):
                 _logger.error("Intermediate output directory prefix doesn't exist.")
                 return 1
 
         if args.tmpdir_prefix != 'tmp':
             # Use user defined prefix (if the folder exists)
-            setattr(args, 'tmpdir_prefix', os.path.abspath(args.tmpdir_prefix))
-            if not os.path.exists(args.tmpdir_prefix):
+            setattr(args, 'tmpdir_prefix', os.path.realpath(args.tmpdir_prefix))
+            if not os.path.exists(os.path.split(args.tmpdir_prefix)[0]):
                 _logger.error("Temporary directory prefix doesn't exist.")
                 return 1
 
@@ -699,7 +701,7 @@ def main(argsl=None,
             return job_order_object
 
         if args.cachedir:
-            setattr(args, 'cachedir', os.path.abspath(args.cachedir))
+            setattr(args, 'cachedir', os.path.realpath(args.cachedir))
             if args.move_outputs == "move":
                 setattr(args, 'move_outputs', "copy")
 
