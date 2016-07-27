@@ -9,4 +9,4 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
     esac
 fi
 cd cwltool/schemas
-./run_test.sh RUNNER=../../cwltool.py
+sudo ./run_test.sh RUNNER=../../cwltool.py
