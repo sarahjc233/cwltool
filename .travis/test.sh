@@ -8,4 +8,5 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
             ;;
     esac
 fi
-cwltool/schemas/run_test.sh;
+cd cwltool/schemas
+run_test.sh
