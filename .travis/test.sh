@@ -8,4 +8,4 @@ if [[ $TRAVIS_OS_NAME == 'osx' ]]; then
             ;;
     esac
 fi
-nosetests;
+../../../cwltool/schemas/;
