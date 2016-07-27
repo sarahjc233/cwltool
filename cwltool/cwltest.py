@@ -102,6 +102,7 @@ def run_test(args, i, t):  # type: (argparse.Namespace, Any, Dict[str,str]) -> i
             outdir = tempfile.mkdtemp()
         test_command.extend(["--outdir={}".format(outdir),
                              "--quiet",
+                             args.no_container,
                              t["tool"]])
         if t.get("job"):
             test_command.append(t["job"])
@@ -156,6 +157,7 @@ def main():  # type: () -> int
     parser.add_argument("--tool", type=str, default="cwl-runner",
                         help="CWL runner executable to use (default 'cwl-runner'")
     parser.add_argument("--only-tools", action="store_true", help="Only test tools")
+    parser.add_argument("--no-container", action="store_true", help="Test with --no-container flag")
 
     args = parser.parse_args()
 

@@ -35,6 +35,9 @@ do
         --only-tools)
             ONLY_TOOLS=--only-tools
             ;;
+        --no-container)
+            NO_CONTAINER=--no-container
+            ;;
         *=*)
             eval $(echo $arg | cut -d= -f1)=\"$(echo $arg | cut -d= -f2-)\"
             ;;
@@ -66,7 +69,7 @@ runtest() {
     (cd $DRAFT
      ${COVERAGE} -m cwltool.cwltest --tool "$1" \
 	     --test=conformance_test_${DRAFT}.yaml ${TEST_N} \
-	     ${TEST_L} ${ONLY_TOOLS} --basedir ${DRAFT}
+	     ${TEST_L} ${ONLY_TOOLS} ${NO_CONTAINER} --basedir ${DRAFT}
     )
     checkexit
 }
