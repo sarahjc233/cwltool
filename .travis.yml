@@ -10,9 +10,6 @@ matrix:
           env: TOXENV=py27
 install:
   - bash .travis/install.sh
-# command to run tests
 
 script:
   - bash .travis/test.sh
-
-
