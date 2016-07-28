@@ -100,9 +100,12 @@ def run_test(args, i, t):  # type: (argparse.Namespace, Any, Dict[str,str]) -> i
             test_command.extend(["--tmp-outdir-prefix={}".format(outdir), "--tmpdir-prefix={}".format(outdir)])
         else:
             outdir = tempfile.mkdtemp()
+
+        if args.no_container:
+            test_command.append("--no-container")
+
         test_command.extend(["--outdir={}".format(outdir),
                              "--quiet",
-                             args.no_container,
                              t["tool"]])
         if t.get("job"):
             test_command.append(t["job"])
