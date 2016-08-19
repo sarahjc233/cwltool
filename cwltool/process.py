@@ -46,14 +46,15 @@ supportedProcessRequirements = ["DockerRequirement",
                                 "ResourceRequirement",
                                 "InitialWorkDirRequirement"]
 
-cwl_files = ("Workflow.yml",
-              "CommandLineTool.yml",
-              "CommonWorkflowLanguage.yml",
-              "Process.yml",
-              "concepts.md",
-              "contrib.md",
-              "intro.md",
-              "invocation.md")
+cwl_files = (
+    "Workflow.yml",
+    "CommandLineTool.yml",
+    "CommonWorkflowLanguage.yml",
+    "Process.yml",
+    "concepts.md",
+    "contrib.md",
+    "intro.md",
+    "invocation.md")
 
 salad_files = ('metaschema.yml',
                'metaschema_base.yml',
@@ -170,7 +171,7 @@ def getListing(fs_access, rec):
         rec["listing"] = listing
 
 def stageFiles(pm, stageFunc, ignoreWritable=False):
-    # type: (PathMapper, Callable[..., Any]) -> None
+    # type: (PathMapper, Callable[..., Any], bool) -> None
     for f, p in pm.items():
         if not os.path.exists(os.path.dirname(p.target)):
             os.makedirs(os.path.dirname(p.target), 0755)
@@ -353,11 +354,11 @@ class Process(object):
 
         # Build record schema from inputs
         self.inputs_record_schema = {
-                "name": "input_record_schema", "type": "record",
-                "fields": []}  # type: Dict[unicode, Any]
+            "name": "input_record_schema", "type": "record",
+            "fields": []}  # type: Dict[unicode, Any]
         self.outputs_record_schema = {
-                "name": "outputs_record_schema", "type": "record",
-                "fields": []}  # type: Dict[unicode, Any]
+            "name": "outputs_record_schema", "type": "record",
+            "fields": []}  # type: Dict[unicode, Any]
 
         for key in ("inputs", "outputs"):
             for i in self.tool[key]:
@@ -374,21 +375,21 @@ class Process(object):
                     c["type"] = c["type"]
                 c["type"] = avroize_type(c["type"], c["name"])
                 if key == "inputs":
-                    self.inputs_record_schema["fields"].append(c)  # type: ignore
+                    self.inputs_record_schema["fields"].append(c)
                 elif key == "outputs":
-                    self.outputs_record_schema["fields"].append(c)  # type: ignore
+                    self.outputs_record_schema["fields"].append(c)
 
         try:
             self.inputs_record_schema = schema_salad.schema.make_valid_avro(self.inputs_record_schema, {}, set())
             avro.schema.make_avsc_object(self.inputs_record_schema, self.names)
         except avro.schema.SchemaParseException as e:
-            raise validate.ValidationException(u"Got error `%s` while prcoessing inputs of %s:\n%s" % (str(e), self.tool["id"], json.dumps(self.inputs_record_schema, indent=4)))
+            raise validate.ValidationException(u"Got error `%s` while processing inputs of %s:\n%s" % (str(e), self.tool["id"], json.dumps(self.inputs_record_schema, indent=4)))
 
         try:
             self.outputs_record_schema = schema_salad.schema.make_valid_avro(self.outputs_record_schema, {}, set())
             avro.schema.make_avsc_object(self.outputs_record_schema, self.names)
         except avro.schema.SchemaParseException as e:
-            raise validate.ValidationException(u"Got error `%s` while prcoessing outputs of %s:\n%s" % (str(e), self.tool["id"], json.dumps(self.outputs_record_schema, indent=4)))
+            raise validate.ValidationException(u"Got error `%s` while processing outputs of %s:\n%s" % (str(e), self.tool["id"], json.dumps(self.outputs_record_schema, indent=4)))
 
 
     def _init_job(self, joborder, **kwargs):
@@ -419,16 +420,17 @@ class Process(object):
         if dockerReq and is_req and not kwargs.get("use_container"):
             raise WorkflowException("Document has DockerRequirement under 'requirements' but use_container is false.  DockerRequirement must be under 'hints' or use_container must be true.")
 
-        if dockerReq and kwargs.get("use_container"):
-            builder.outdir = kwargs.get("docker_outdir") or "/var/spool/cwl"
-            builder.tmpdir = kwargs.get("docker_tmpdir") or "/tmp"
-            builder.stagedir = kwargs.get("docker_stagedir") or "/var/lib/cwl"
-        else:
-            builder.outdir = kwargs.get("outdir") or tempfile.mkdtemp()
-            builder.tmpdir = kwargs.get("tmpdir") or tempfile.mkdtemp()
-            builder.stagedir = kwargs.get("stagedir") or tempfile.mkdtemp()
+        builder.make_fs_access = kwargs.get("make_fs_access") or StdFsAccess
+        builder.fs_access = builder.make_fs_access(kwargs["basedir"])
 
-        builder.fs_access = kwargs.get("fs_access") or StdFsAccess(kwargs["basedir"])
+        if dockerReq and kwargs.get("use_container"):
+            builder.outdir = builder.fs_access.realpath(kwargs.get("docker_outdir") or "/var/spool/cwl")
+            builder.tmpdir = builder.fs_access.realpath(kwargs.get("docker_tmpdir") or "/tmp")
+            builder.stagedir = builder.fs_access.realpath(kwargs.get("docker_stagedir") or "/var/lib/cwl")
+        else:
+            builder.outdir = builder.fs_access.realpath(kwargs.get("outdir") or tempfile.mkdtemp())
+            builder.tmpdir = builder.fs_access.realpath(kwargs.get("tmpdir") or tempfile.mkdtemp())
+            builder.stagedir = builder.fs_access.realpath(kwargs.get("stagedir") or tempfile.mkdtemp())
 
         if self.formatgraph:
             for i in self.tool["inputs"]:
@@ -442,7 +444,7 @@ class Process(object):
             for n, b in enumerate(aslist(self.tool["baseCommand"])):
                 builder.bindings.append({
                     "position": [-1000000, n],
-                    "valueFrom": b
+                    "datum": b
                 })
 
         if self.tool.get("arguments"):
@@ -453,19 +455,16 @@ class Process(object):
                         a["position"] = [a["position"], i]
                     else:
                         a["position"] = [0, i]
-                    a["do_eval"] = a["valueFrom"]
-                    a["valueFrom"] = None
                     builder.bindings.append(a)
                 elif ("$(" in a) or ("${" in a):
                     builder.bindings.append({
                         "position": [0, i],
-                        "do_eval": a,
-                        "valueFrom": None
+                        "valueFrom": a
                     })
                 else:
                     builder.bindings.append({
                         "position": [0, i],
-                        "valueFrom": a
+                        "datum": a
                     })
 
         builder.bindings.sort(key=lambda a: a["position"])
@@ -510,7 +509,7 @@ class Process(object):
         else:
             return {
                 "cores": request["coresMin"],
-                "ram":   request["ramMin"],
+                "ram": request["ramMin"],
                 "tmpdirSize": request["tmpdirMin"],
                 "outdirSize": request["outdirMin"],
             }
@@ -523,7 +522,7 @@ class Process(object):
                     validate.validate_ex(avsc_names.get_name(r["class"], ""), r, strict=strict)
                 else:
                     _logger.info(str(validate.ValidationException(
-                    u"Unknown hint %s" % (r["class"]))))
+                        u"Unknown hint %s" % (r["class"]))))
             except validate.ValidationException as v:
                 raise validate.ValidationException(u"Validating hint `%s`: %s" % (r["class"], str(v)))
 
