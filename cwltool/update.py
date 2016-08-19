@@ -326,6 +326,10 @@ def _draft3toDraft4dev1(doc, loader, baseuri):
     # type: (Any, Loader, str) -> Any
     if isinstance(doc, dict):
         if "class" in doc and doc["class"] == "Workflow":
+            if 'parsed' in doc:
+                del doc['parsed']
+                return doc
+
             def fixup(f):  # type: (str) -> str
                 doc, frg = urlparse.urldefrag(f)
                 frg = '/'.join(frg.rsplit('.', 1))
@@ -347,6 +351,7 @@ def _draft3toDraft4dev1(doc, loader, baseuri):
                     step["scatter"] = [fixup(s) for s in aslist(step["scatter"])]
             for out in doc["outputs"]:
                 out["source"] = fixup(out["source"])
+            doc['parsed']=True
         for key, value in doc.items():
             doc[key] = _draft3toDraft4dev1(value, loader, baseuri)
     elif isinstance(doc, list):
@@ -363,11 +368,15 @@ def _draft4Dev1toDev2(doc, loader, baseuri):
     # type: (Any, Loader, str) -> Any
     if isinstance(doc, dict):
         if "class" in doc and doc["class"] == "Workflow":
+            if 'parsed' in doc:
+                del doc['parsed']
+                return doc
             for out in doc["outputs"]:
                 out["outputSource"] = out["source"]
                 del out["source"]
         for key, value in doc.items():
             doc[key] = _draft4Dev1toDev2(value, loader, baseuri)
+        doc['parsed']=True
     elif isinstance(doc, list):
         doc = [_draft4Dev1toDev2(item, loader, baseuri) for item in doc]
 
