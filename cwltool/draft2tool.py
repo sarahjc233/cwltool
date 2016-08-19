@@ -23,6 +23,7 @@ from . import expression
 from .builder import CONTENT_LIMIT, substitute, Builder, adjustFileObjs, adjustDirObjs
 from .pathmapper import PathMapper
 from .job import CommandLineJob
+from .stdfsaccess import StdFsAccess
 
 ACCEPTLIST_RE = re.compile(r"^[a-zA-Z0-9._+-]+$")
 
@@ -53,7 +54,8 @@ class ExpressionTool(Process):
                 normalizeFilesDirs(ev)
                 self.output_callback(ev, "success")
             except Exception as e:
-                _logger.warn(u"Failed to evaluate expression:\n%s", e, exc_info=(e if kwargs.get('debug') else False))
+                _logger.warn(u"Failed to evaluate expression:\n%s",
+                        e, exc_info=kwargs.get('debug'))
                 self.output_callback({}, "permanentFail")
 
     def job(self, joborder, output_callback, **kwargs):
@@ -107,11 +109,11 @@ class CallbackJob(object):
 
     def run(self, **kwargs):
         # type: (**Any) -> None
-        self.output_callback(self.job.collect_output_ports(self.job.tool["outputs"],
-                                                           self.cachebuilder,
-                                                           self.outdir,
-                                                           kwargs.get("compute_checksum", True)),
-                                            "success")
+        self.output_callback(self.job.collect_output_ports(
+            self.job.tool["outputs"],
+            self.cachebuilder,
+            self.outdir,
+            kwargs.get("compute_checksum", True)), "success")
 
 # map files to assigned path inside a container. We need to also explicitly
 # walk over input as implicit reassignment doesn't reach everything in builder.bindings
@@ -124,6 +126,19 @@ def check_adjust(builder, f):
     if not ACCEPTLIST_RE.match(f["basename"]):
         raise WorkflowException("Invalid filename: '%s' contains illegal characters" % (f["basename"]))
     return f
+
+def compute_checksums(fs_access, fileobj):
+    if "checksum" not in fileobj:
+        checksum = hashlib.sha1()
+        with fs_access.open(fileobj["location"], "rb") as f:
+            contents = f.read(1024*1024)
+            while contents != "":
+                checksum.update(contents)
+                contents = f.read(1024*1024)
+            f.seek(0, 2)
+            filesize = f.tell()
+        fileobj["checksum"] = "sha1$%s" % checksum.hexdigest()
+        fileobj["size"] = filesize
 
 class CommandLineTool(Process):
     def __init__(self, toolpath_object, **kwargs):
@@ -206,16 +221,17 @@ class CommandLineTool(Process):
                 os.makedirs(jobcache)
                 kwargs["outdir"] = jobcache
                 open(jobcachepending, "w").close()
+
                 def rm_pending_output_callback(output_callback, jobcachepending,
                                                outputs, processStatus):
                     if processStatus == "success":
                         os.remove(jobcachepending)
                     output_callback(outputs, processStatus)
                 output_callback = cast(
-                        Callable[..., Any],  # known bug in mypy
-                        # https://github.com/python/mypy/issues/797
-                        partial(rm_pending_output_callback, output_callback,
-                            jobcachepending))
+                    Callable[..., Any],  # known bug in mypy
+                    # https://github.com/python/mypy/issues/797
+                    partial(rm_pending_output_callback, output_callback,
+                        jobcachepending))
 
         builder = self._init_job(joborder, **kwargs)
 
@@ -242,7 +258,11 @@ class CommandLineTool(Process):
 
 
         builder.pathmapper = None
-        builder.pathmapper = self.makePathMapper(reffiles, builder.stagedir, **kwargs)
+        make_path_mapper_kwargs = kwargs
+        if "stagedir" in make_path_mapper_kwargs:
+            make_path_mapper_kwargs = make_path_mapper_kwargs.copy()
+            del make_path_mapper_kwargs["stagedir"]
+        builder.pathmapper = self.makePathMapper(reffiles, builder.stagedir, **make_path_mapper_kwargs)
         builder.requirements = j.requirements
 
         _logger.debug(u"[job %s] path mappings is %s", j.name, json.dumps({p: builder.pathmapper.mapper(p) for p in builder.pathmapper.files()}, indent=4))
@@ -339,20 +359,36 @@ class CommandLineTool(Process):
 
         j.pathmapper = builder.pathmapper
         j.collect_outputs = partial(
-                self.collect_output_ports, self.tool["outputs"], builder, compute_checksum=kwargs.get("compute_checksum", True))
+            self.collect_output_ports, self.tool["outputs"], builder,
+            compute_checksum=kwargs.get("compute_checksum", True))
         j.output_callback = output_callback
 
         yield j
 
     def collect_output_ports(self, ports, builder, outdir, compute_checksum=True):
-        # type: (Set[Dict[str,Any]], Builder, str) -> Dict[unicode, Union[unicode, List[Any], Dict[unicode, Any]]]
+        # type: (Set[Dict[str,Any]], Builder, str, bool) -> Dict[unicode, Union[unicode, List[Any], Dict[unicode, Any]]]
         try:
             ret = {}  # type: Dict[unicode, Union[unicode, List[Any], Dict[unicode, Any]]]
-            custom_output = builder.fs_access.join(outdir, "cwl.output.json")
-            if builder.fs_access.exists(custom_output):
-                with builder.fs_access.open(custom_output, "r") as f:
+            fs_access = builder.make_fs_access(outdir)
+            custom_output = fs_access.join(outdir, "cwl.output.json")
+            if fs_access.exists(custom_output):
+                with fs_access.open(custom_output, "r") as f:
                     ret = json.load(f)
                 _logger.debug(u"Raw output from %s: %s", custom_output, json.dumps(ret, indent=4))
+            else:
+                for port in ports:
+                    fragment = shortname(port["id"])
+                    try:
+                        ret[fragment] = self.collect_output(port, builder, outdir, fs_access, compute_checksum=compute_checksum)
+                    except Exception as e:
+                        _logger.debug(
+                            u"Error collecting output for parameter '%s'"
+                            % shortname(port["id"]), exc_info=True)
+                        raise WorkflowException(
+                            u"Error collecting output for parameter '%s': %s"
+                            % (shortname(port["id"]), e))
+
+            if ret:
                 adjustFileObjs(ret,
                         cast(Callable[[Any], Any],  # known bug in mypy
                             # https://github.com/python/mypy/issues/797
@@ -360,27 +396,16 @@ class CommandLineTool(Process):
                 adjustFileObjs(ret, remove_path)
                 adjustDirObjs(ret, remove_path)
                 normalizeFilesDirs(ret)
-                validate.validate_ex(self.names.get_name("outputs_record_schema", ""), ret)
-                return ret
+                if compute_checksum:
+                    adjustFileObjs(ret, partial(compute_checksums, fs_access))
 
-            for port in ports:
-                fragment = shortname(port["id"])
-                try:
-                    ret[fragment] = self.collect_output(port, builder, outdir, compute_checksum)
-                except Exception as e:
-                    _logger.debug(u"Error collecting output for parameter '%s'" % shortname(port["id"]), exc_info=e)
-                    raise WorkflowException(u"Error collecting output for parameter '%s': %s" % (shortname(port["id"]), e))
-            if ret:
-                adjustFileObjs(ret, remove_path)
-                adjustDirObjs(ret, remove_path)
-                normalizeFilesDirs(ret)
             validate.validate_ex(self.names.get_name("outputs_record_schema", ""), ret)
             return ret if ret is not None else {}
         except validate.ValidationException as e:
             raise WorkflowException("Error validating output record, " + str(e) + "\n in " + json.dumps(ret, indent=4))
 
-    def collect_output(self, schema, builder, outdir, compute_checksum=True):
-        # type: (Dict[str,Any], Builder, str) -> Union[Dict[unicode, Any], List[Union[Dict[unicode, Any], unicode]]]
+    def collect_output(self, schema, builder, outdir, fs_access, compute_checksum=True):
+        # type: (Dict[str,Any], Builder, str, StdFsAccess, bool) -> Union[Dict[unicode, Any], List[Union[Dict[unicode, Any], unicode]]]
         r = []  # type: List[Any]
         if "outputBinding" in schema:
             binding = schema["outputBinding"]
@@ -403,16 +428,16 @@ class CommandLineTool(Process):
                         raise WorkflowException("glob patterns must not start with '/'")
                     try:
                         r.extend([{"location": g,
-                                   "class": "File" if builder.fs_access.isfile(g) else "Directory"}
-                                  for g in builder.fs_access.glob(builder.fs_access.join(outdir, gb))])
+                                   "class": "File" if fs_access.isfile(g) else "Directory"}
+                                  for g in fs_access.glob(fs_access.join(outdir, gb))])
                     except (OSError, IOError) as e:
                         _logger.warn(str(e))
 
                 for files in r:
                     if files["class"] == "Directory" and "listing" not in files:
-                        getListing(builder.fs_access, files)
+                        getListing(fs_access, files)
                     else:
-                        with builder.fs_access.open(files["location"], "rb") as f:
+                        with fs_access.open(files["location"], "rb") as f:
                             contents = ""
                             if binding.get("loadContents") or compute_checksum:
                                 contents = f.read(CONTENT_LIMIT)
@@ -472,7 +497,7 @@ class CommandLineTool(Process):
                                 sfpath = {"location": substitute(primary["location"], sf), "class": "File"}
 
                             for sfitem in aslist(sfpath):
-                                if builder.fs_access.exists(sfitem["location"]):
+                                if fs_access.exists(sfitem["location"]):
                                     primary["secondaryFiles"].append(sfitem)
 
             if not r and optional:
@@ -483,6 +508,7 @@ class CommandLineTool(Process):
             out = {}
             for f in schema["type"]["fields"]:
                 out[shortname(f["name"])] = self.collect_output(  # type: ignore
-                        f, builder, outdir, compute_checksum)
+                    f, builder, outdir, fs_access,
+                    compute_checksum=compute_checksum)
             return out
         return r

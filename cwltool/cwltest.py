@@ -43,7 +43,7 @@ def compare(a, b):  # type: (Any, Any) -> bool
                     raise CompareFail(u"%s does not end with %s" %(b[comp], a[comp]))
                 # ignore empty collections
                 b = {k: v for k, v in b.iteritems()
-                        if not isinstance(v, (list, dict)) or len(v) > 0}
+                    if not isinstance(v, (list, dict)) or len(v) > 0}
             elif a.get("class") == "Directory":
                 if len(a["listing"]) != len(b["listing"]):
                     return False
@@ -123,6 +123,9 @@ def run_test(args, i, t):  # type: (argparse.Namespace, Any, Dict[str,str]) -> i
         _logger.error(u"""Test failed: %s""", " ".join([pipes.quote(tc) for tc in test_command]))
         _logger.error(outstr)
         _logger.error(u"Parse error %s", str(e))
+    except KeyboardInterrupt:
+        _logger.error(u"""Test interrupted: %s""", " ".join([pipes.quote(tc) for tc in test_command]))
+        raise
 
     failed = False
 
@@ -138,8 +141,7 @@ def run_test(args, i, t):  # type: (argparse.Namespace, Any, Dict[str,str]) -> i
         failed = True
 
     if outdir:
-        shutil.rmtree(outdir, True)  # type: ignore
-        # Weird AnyStr != basestring issue
+        shutil.rmtree(outdir, True)
 
     if failed:
         return 1
@@ -197,21 +199,29 @@ def main():  # type: () -> int
     else:
         ntest = range(0, len(tests))
 
-    for i in ntest:
-        t = tests[i]
-        sys.stderr.write("\rTest [%i/%i] " % (i+1, len(tests)))
-        sys.stderr.flush()
-        rt = run_test(args, i, t)
-        if rt == 1:
-            failures += 1
-        elif rt == UNSUPPORTED_FEATURE:
-            unsupported += 1
+    total = 0
+    try:
+        for i in ntest:
+            t = tests[i]
+            sys.stderr.write("\rTest [%i/%i] " % (i+1, len(tests)))
+            sys.stderr.flush()
+            rt = run_test(args, i, t)
+            total += 1
+            if rt == 1:
+                failures += 1
+            elif rt == UNSUPPORTED_FEATURE:
+                unsupported += 1
+    except KeyboardInterrupt:
+        _logger.error("Tests interrupted")
 
     if failures == 0 and unsupported == 0:
-         _logger.info("All tests passed")
-         return 0
+        _logger.info("All tests passed")
+        return 0
+    elif failures == 0 and unsupported > 0:
+        _logger.warn("%i tests passed, %i unsupported features", total - unsupported, unsupported)
+        return 0
     else:
-        _logger.warn("%i failures, %i unsupported features", failures, unsupported)
+        _logger.warn("%i tests passed, %i failures, %i unsupported features", total - (failures + unsupported), failures, unsupported)
         return 1
 
 

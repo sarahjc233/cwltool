@@ -54,8 +54,8 @@ def _convert_stdstreams_to_files(workflowobj):
                     if out['type'] == streamtype:
                         if 'outputBinding' in out:
                             raise ValidationException(
-                                    "Not allowed to specify outputBinding when"
-                                    " using %s shortcut." % streamtype)
+                                "Not allowed to specify outputBinding when"
+                                " using %s shortcut." % streamtype)
                         if streamtype in workflowobj:
                             filename = workflowobj[streamtype]
                         else:
@@ -63,7 +63,10 @@ def _convert_stdstreams_to_files(workflowobj):
                             workflowobj[streamtype] = filename
                         out['type'] = 'File'
                         out['outputBinding'] = {'glob': filename}
-    else:
+        else:
+            for entry in workflowobj.itervalues():
+                _convert_stdstreams_to_files(entry)
+    if isinstance(workflowobj, list):
         for entry in workflowobj:
             _convert_stdstreams_to_files(entry)
 
@@ -101,7 +104,7 @@ def validate_document(document_loader, workflowobj, uri,
             del workflowobj["@graph"]
 
     (document_loader, avsc_names) = \
-            process.get_schema(workflowobj["cwlVersion"])[:2]
+        process.get_schema(workflowobj["cwlVersion"])[:2]
 
     if isinstance(avsc_names, Exception):
         raise avsc_names

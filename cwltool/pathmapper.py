@@ -80,7 +80,37 @@ def abspath(src, basedir):  # type: (unicode, unicode) -> unicode
 class PathMapper(object):
 
     """Mapping of files from relative path provided in the file to a tuple of
-    (absolute local path, absolute container path)"""
+    (absolute local path, absolute container path)
+
+    The tao of PathMapper:
+
+    The initializer takes a list of File and Directory objects, a base
+    directory (for resolving relative references) and a staging directory
+    (where the files are mapped to).
+
+    The purpose of the setup method is to determine where each File or
+    Directory should be placed on the target file system (relative to
+    stagedir).
+
+    If separatedirs=True, unrelated files will be isolated in their own
+    directories under stagedir. If separatedirs=False, files and directories
+    will all be placed in stagedir (with the possibility for name
+    collisions...)
+
+    The path map maps the "location" of the input Files and Directory objects
+    to a tuple (resolved, target, type). The "resolved" field is the "real"
+    path on the local file system (after resolving relative paths and
+    traversing symlinks). The "target" is the path on the target file system
+    (under stagedir). The type is the object type (one of File, Directory,
+    CreateFile, WritableFile).
+
+    The latter two (CreateFile, WritableFile) are used by
+    InitialWorkDirRequirement to indicate files that are generated on the fly
+    (CreateFile, in this case "resolved" holds the file contents instead of the
+    path because they file doesn't exist) or copied into the output directory
+    so they can be opened for update ("r+" or "a") (WritableFile).
+
+    """
 
     def __init__(self, referenced_files, basedir, stagedir, separateDirs=True):
         # type: (List[Any], unicode, unicode, bool) -> None
@@ -131,14 +161,14 @@ class PathMapper(object):
 
         # Dereference symbolic links
         for path, (ab, tgt, type) in self._pathmap.items():
-            if type != "File": # or not os.path.exists(ab):
+            if type != "File":  # or not os.path.exists(ab):
                 continue
             deref = ab
             st = os.lstat(deref)
             while stat.S_ISLNK(st.st_mode):
                 rl = os.readlink(deref)
                 deref = rl if os.path.isabs(rl) else os.path.join(
-                        os.path.dirname(deref), rl)
+                    os.path.dirname(deref), rl)
                 st = os.lstat(deref)
 
             self._pathmap[path] = MapperEnt(deref, tgt, "File")
