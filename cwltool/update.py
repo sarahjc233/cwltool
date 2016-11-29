@@ -3,6 +3,7 @@ import urlparse
 import json
 import re
 import traceback
+from copy import deepcopy
 
 from schema_salad.ref_resolver import Loader
 import schema_salad.validate
@@ -330,6 +331,8 @@ def _draft3toDraft4dev1(doc, loader, baseuri):
                 del step["inputs"]
                 del step["outputs"]
         for key, value in doc.items():
+            if key == 'run':
+                value = deepcopy(value)
             doc[key] = _draft3toDraft4dev1(value, loader, baseuri)
     elif isinstance(doc, list):
         doc = [_draft3toDraft4dev1(item, loader, baseuri) for item in doc]
